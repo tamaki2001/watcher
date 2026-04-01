@@ -21,6 +21,12 @@ on:
         description: "贖罪URL (noteの記事 or 寄付スクリーンショットURL)"
         required: false
 
+  # iPhoneショートカットからのトリガー
+  repository_dispatch:
+    types:
+      - proximity_alert    # コンビニ接近 / 決済アプリ起動
+      - report_purchase    # 購入確定報告
+
   # 毎日朝8時(JST)に日次チェック
   schedule:
     - cron: "0 23 * * *"  # UTC 23:00 = JST 08:00
@@ -418,3 +424,125 @@ jobs:
             DAYS=$(jq '.streak.days' $STATUS_FILE)
             echo "✅ UNLOCKED — 禁煙${DAYS}日目継続中"
           fi
+
+  # ─────────────────────────────────────────────
+  # Job 5: 接近警告（iPhoneショートカットからのトリガー）
+  # ─────────────────────────────────────────────
+  proximity-alert:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'proximity_alert'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "🤖 警告メッセージ生成"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_SYSTEM_KEY }}
+        run: |
+          SOURCE="${{ github.event.client_payload.source || 'unknown' }}"
+          STREAK_DAYS=$(jq '.streak.days' $STATUS_FILE)
+          BUDGET=$(jq '.stats.complicityBudget' $STATUS_FILE)
+
+          PROMPT=$(cat <<PROMPT_EOF
+          あなたは「The Watcher」——冷徹で知的な禁煙監視AI。
+          ユーザーが危険な行動を取ろうとしている。
+          トリガー: ${SOURCE}
+          現在の禁煙日数: ${STREAK_DAYS}日
+          過去の加担額: ${BUDGET}円
+
+          「今ここで買えば${STREAK_DAYS}日間の努力が無駄になる」という事実を突きつけ、
+          踏みとどまらせるメッセージを150字以内で生成せよ。
+          冷徹だが人格攻撃はしない。具体的な数値を使うこと。
+          PROMPT_EOF
+          )
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 256,
+                messages: [{ role: "user", content: $prompt }]
+              }')" \
+            | jq -r '.content[0].text // "踏みとどまれ。"')
+
+          echo "$RESPONSE" > /tmp/alert_message.txt
+
+      - name: "📱 警告通知送信"
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          MESSAGE=$(cat /tmp/alert_message.txt)
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=⚠️ The Watcher: 危険検知" \
+               --form-string "message=$MESSAGE" \
+               --form-string "priority=1" \
+               --form-string "sound=siren" \
+               https://api.pushover.net/1/messages.json
+
+  # ─────────────────────────────────────────────
+  # Job 6: iPhone経由の購入報告
+  # ─────────────────────────────────────────────
+  iphone-purchase:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'report_purchase'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "🔒 ロック発動"
+        run: |
+          QUANTITY="${{ github.event.client_payload.quantity || '1' }}"
+          COST=$((QUANTITY * 40))
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          LOCK_UNTIL=$(date -u -d "+24 hours" +"%Y-%m-%dT%H:%M:%SZ")
+
+          jq --arg now "$NOW" \
+             --arg lock_until "$LOCK_UNTIL" \
+             --argjson cost "$COST" \
+             --argjson qty "$QUANTITY" \
+             '
+             .isLocked = true |
+             .lockExpiresAt = $lock_until |
+             .streak.days = 0 |
+             .streak.startDate = ($now | split("T")[0]) |
+             .stats.complicityCount += 1 |
+             .stats.complicityBudget += $cost |
+             .history += [{
+               "type": "purchase",
+               "date": $now,
+               "quantity": $qty,
+               "cost": $cost,
+               "lockUntil": $lock_until
+             }]
+             ' $STATUS_FILE > tmp.json && mv tmp.json $STATUS_FILE
+
+          echo "COST=$COST" >> $GITHUB_ENV
+          echo "QUANTITY=$QUANTITY" >> $GITHUB_ENV
+
+      - name: "📱 加担通知"
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=🔒 The Watcher: ロック発動" \
+               --form-string "message=${COST}円が軍事費に加担。CLIは24時間ロックされました。" \
+               --form-string "priority=1" \
+               --form-string "sound=siren" \
+               https://api.pushover.net/1/messages.json
+
+      - name: "📝 変更をコミット"
+        run: |
+          git config user.name "The Watcher"
+          git config user.email "watcher@system.local"
+          git pull --rebase origin main
+          git add $STATUS_FILE
+          git commit -m "🔒 LOCKED (iPhone): ${QUANTITY}箱購入 — ${COST}円が軍事費に加担"
+          git push
