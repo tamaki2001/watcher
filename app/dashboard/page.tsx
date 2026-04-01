@@ -208,7 +208,7 @@ export default function Dashboard() {
 
       {/* フッター */}
       <footer style={styles.footer}>
-        <p>The Watcher — タバコ税の防衛費転用に抗議する禁煙監視システム</p>
+        <p>the Watcher - たばこ税の防衛費転用に抗議する禁煙監視システム</p>
         <p style={{ opacity: 0.4, fontSize: "0.75rem" }}>
           Powered by Claude API + GitHub Actions + Pushover
         </p>
