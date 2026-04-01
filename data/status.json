@@ -1,6 +1,6 @@
 {
-  "isLocked": false,
-  "lockExpiresAt": null,
+  "isLocked": true,
+  "lockExpiresAt": "2026-04-02T21:44:58Z",
   "streak": {
     "days": 0,
     "startDate": "2026-04-01"
@@ -8,9 +8,17 @@
   "stats": {
     "blockedCount": 0,
     "blockedBudget": 0,
-    "complicityCount": 0,
-    "complicityBudget": 0
+    "complicityCount": 1,
+    "complicityBudget": 40
   },
-  "history": [],
+  "history": [
+    {
+      "type": "purchase",
+      "date": "2026-04-01T21:44:58Z",
+      "quantity": 1,
+      "cost": 40,
+      "lockUntil": "2026-04-02T21:44:58Z"
+    }
+  ],
   "redemptions": []
 }
