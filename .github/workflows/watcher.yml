@@ -482,6 +482,8 @@ jobs:
                --form-string "message=$MESSAGE" \
                --form-string "priority=1" \
                --form-string "sound=siren" \
+               --form-string "url=shortcuts://run-shortcut?name=%E8%B3%BC%E5%85%A5%E5%A0%B1%E5%91%8A" \
+               --form-string "url_title=⚠️ 買ってしまった…（購入報告）" \
                https://api.pushover.net/1/messages.json
 
   # ─────────────────────────────────────────────
