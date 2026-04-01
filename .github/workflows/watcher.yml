@@ -25,7 +25,10 @@ on:
   repository_dispatch:
     types:
       - proximity_alert    # コンビニ接近 / 決済アプリ起動
-      - report_purchase    # 購入確定報告
+      - buy_1              # 1箱購入 (40円)
+      - buy_2              # 2箱購入 (80円)
+      - buy_3              # 3箱購入 (120円)
+      - buy_carton         # カートン購入 (400円)
 
   # 毎日朝8時(JST)に日次チェック
   schedule:
@@ -499,7 +502,13 @@ jobs:
   # Job 6: iPhone経由の購入報告
   # ─────────────────────────────────────────────
   iphone-purchase:
-    if: github.event_name == 'repository_dispatch' && github.event.action == 'report_purchase'
+    if: >-
+      github.event_name == 'repository_dispatch' && (
+        github.event.action == 'buy_1' ||
+        github.event.action == 'buy_2' ||
+        github.event.action == 'buy_3' ||
+        github.event.action == 'buy_carton'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -508,7 +517,14 @@ jobs:
 
       - name: "🔒 ロック発動"
         run: |
-          QUANTITY="${{ github.event.client_payload.quantity || '1' }}"
+          ACTION="${{ github.event.action }}"
+          case "$ACTION" in
+            buy_1)      QUANTITY=1  ;;
+            buy_2)      QUANTITY=2  ;;
+            buy_3)      QUANTITY=3  ;;
+            buy_carton) QUANTITY=10 ;;
+            *)          QUANTITY=1  ;;
+          esac
           COST=$((QUANTITY * 40))
           NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           LOCK_UNTIL=$(date -u -d "+24 hours" +"%Y-%m-%dT%H:%M:%SZ")
