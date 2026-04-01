@@ -553,15 +553,29 @@ jobs:
           echo "COST=$COST" >> $GITHUB_ENV
           echo "QUANTITY=$QUANTITY" >> $GITHUB_ENV
 
+      - name: "📰 戦争ニュース取得"
+        run: |
+          NEWS=$(curl -s "https://news.google.com/rss/search?q=戦争+紛争+犠牲者+空爆&hl=ja&gl=JP&ceid=JP:ja" \
+            | grep -oP '<title><!\[CDATA\[\K[^]]+' \
+            | head -4 \
+            | tr '\n' '\n' || echo "ニュース取得失敗")
+          echo "$NEWS" > /tmp/war_news.txt
+
       - name: "📱 加担通知"
         env:
           PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
           PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
         run: |
+          NEWS=$(cat /tmp/war_news.txt)
+          MESSAGE="${COST}円が軍事費に加担。Gemini/Claudeは24時間ロック。
+
+あなたの加担が支える現実:
+${NEWS}"
+
           curl -s --form-string "token=$PUSHOVER_TOKEN" \
                --form-string "user=$PUSHOVER_USER" \
                --form-string "title=🔒 The Watcher: ロック発動" \
-               --form-string "message=${COST}円が軍事費に加担。CLIは24時間ロックされました。" \
+               --form-string "message=$MESSAGE" \
                --form-string "priority=1" \
                --form-string "sound=siren" \
                https://api.pushover.net/1/messages.json

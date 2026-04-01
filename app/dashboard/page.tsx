@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [sending, setSending] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [unlockUrl, setUnlockUrl] = useState("");
+  const [news, setNews] = useState<{ title: string; link: string }[]>([]);
 
   const fetchStatus = useCallback(() => {
     fetch(STATUS_URL, { cache: "no-store" })
@@ -56,6 +57,13 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
+  useEffect(() => {
+    fetch("/api/news")
+      .then((r) => r.json())
+      .then(setNews)
+      .catch(() => {});
+  }, []);
+
   const dispatch = async (eventType: string, payload?: Record<string, string>) => {
     setSending(eventType);
     setMessage(null);
@@ -69,7 +77,6 @@ export default function Dashboard() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        setMessage("送信完了。反映まで数秒かかります。");
         setTimeout(fetchStatus, 10000);
       } else {
         const data = await res.json();
@@ -125,9 +132,14 @@ export default function Dashboard() {
           {status.isLocked ? "\u{1F512}" : "\u2705"}
         </span>
         <div style={{ flex: 1 }}>
+          {status.isLocked && (
+            <div style={{ fontSize: "0.75rem", opacity: 0.7, marginBottom: 4, color: "#ff8888" }}>
+              あなたは喫煙によって世界が悪くなるのを支援したため
+            </div>
+          )}
           <div style={{ fontSize: "1.3rem", fontWeight: "bold" }}>
             {status.isLocked
-              ? "LOCKED \u2014 CLI\u7121\u52B9\u5316\u4E2D"
+              ? "LOCKED \u2014 Gemini / Claude \u7121\u52B9\u5316\u4E2D"
               : `禁煙 ${status.streak.days} 日目`}
           </div>
           {status.isLocked && status.lockExpiresAt && (
@@ -144,6 +156,27 @@ export default function Dashboard() {
       {/* フィードバックメッセージ */}
       {message && (
         <div style={s.feedback}>{message}</div>
+      )}
+
+      {/* 戦争ニュース（ロック時） */}
+      {status.isLocked && news.length > 0 && (
+        <section style={s.section}>
+          <h2 style={s.sectionTitle}>あなたの加担が支える現実</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+            {news.map((n, i) => (
+              <a
+                key={i}
+                href={n.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={s.newsItem}
+              >
+                <span style={{ color: "#ff6666", flexShrink: 0 }}>{"\u25CF"}</span>
+                <span>{n.title}</span>
+              </a>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* 購入報告セクション */}
@@ -189,7 +222,7 @@ export default function Dashboard() {
           {/* 贖罪方法カード */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
             <a
-              href="https://note.com/intent/post?body=%E3%80%90%E7%A6%81%E7%85%99%E3%81%AE%E8%B4%96%E7%BD%AA%E8%A8%98%E4%BA%8B%E3%80%91%0A%0A%E7%A7%81%E3%81%AF%E3%81%BE%E3%81%9F%E3%82%BF%E3%83%90%E3%82%B3%E3%82%92%E8%B2%B7%E3%81%A3%E3%81%A6%E3%81%97%E3%81%BE%E3%81%A3%E3%81%9F%E3%80%82%E3%81%9D%E3%81%AE%E7%A8%8E%E9%87%91%E3%81%AF%E9%98%B2%E8%A1%9B%E8%B2%BB%E3%81%AB%E8%BB%A2%E7%94%A8%E3%81%95%E3%82%8C%E3%82%8B%E3%80%82%0A%0A%E5%8F%82%E8%80%83%E8%A8%98%E4%BA%8B%3A%0A-%20https%3A%2F%2Fwww.msf.or.jp%2Fnews%2F%0A-%20https%3A%2F%2Fwww3.nhk.or.jp%2Fnews%2Fcat6.html%0A%0A"
+              href={buildNoteUrl(news)}
               target="_blank"
               rel="noopener noreferrer"
               style={s.redemptionCard}
@@ -370,6 +403,33 @@ export default function Dashboard() {
       </footer>
     </div>
   );
+}
+
+function buildNoteUrl(news: { title: string; link: string }[]) {
+  const newsSection = news.length > 0
+    ? news.slice(0, 5).map((n) => `- ${n.title}\n  ${n.link}`).join("\n")
+    : "- https://www.msf.or.jp/news/\n- https://www3.nhk.or.jp/news/cat6.html";
+
+  const body = `【禁煙の贖罪記事】
+
+私はまたタバコを買ってしまった。
+2026年4月から、IQOS1箱あたり40円のたばこ税増税分が防衛費に転用されている。
+つまり私は、1箱買うたびに40円を軍事費に加担している。
+
+この記事では、その「加担」が現実に何を意味するのかを直視する。
+
+---
+
+【いま世界で起きていること】
+
+${newsSection}
+
+---
+
+（ここに、上記ニュースを引用しながら1000字以上の政治的批判を書いてください）
+
+`;
+  return `https://note.com/intent/post?body=${encodeURIComponent(body)}`;
 }
 
 function Countdown({ expiresAt }: { expiresAt: string }) {
@@ -565,6 +625,19 @@ const s: Record<string, React.CSSProperties> = {
     padding: "0.5rem",
     borderBottom: "1px solid #1a1a1a",
     fontSize: "0.8rem",
+  },
+  newsItem: {
+    display: "flex",
+    gap: "0.5rem",
+    alignItems: "baseline",
+    padding: "0.5rem 0.6rem",
+    background: "#1a0a0a",
+    border: "1px solid #331a1a",
+    borderRadius: 6,
+    color: "#ccaaaa",
+    textDecoration: "none",
+    fontSize: "0.8rem",
+    lineHeight: 1.4,
   },
   redemptionCard: {
     display: "flex",
