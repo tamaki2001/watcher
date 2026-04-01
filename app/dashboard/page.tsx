@@ -238,25 +238,32 @@ export default function Dashboard() {
 
           {/* 贖罪方法カード */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
-            <a
-              href={buildNoteUrl(
-                selectedNews.size > 0
+            <div
+              style={{ ...s.redemptionCard, cursor: "pointer" }}
+              onClick={async () => {
+                const selected = selectedNews.size > 0
                   ? news.filter((_, i) => selectedNews.has(i))
-                  : news
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={s.redemptionCard}
+                  : news;
+                const template = buildNoteTemplate(selected);
+                try {
+                  await navigator.clipboard.writeText(template);
+                  setMessage("テンプレートをコピーしました。noteに貼り付けてください。");
+                } catch {
+                  // fallback: prompt
+                  prompt("以下をコピーしてnoteに貼り付けてください:", template);
+                }
+                window.open("https://note.com/notes/new", "_blank");
+              }}
             >
               <div style={{ fontSize: "1.2rem" }}>&#x270D;&#xFE0F;</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>noteに自己批判記事を書く</div>
                 <div style={{ fontSize: "0.75rem", opacity: 0.5, marginTop: 2 }}>
-                  1000字以上 / 防衛費・タバコ税への批判 / ニュース引用必須
+                  テンプレートをコピー → noteの記事作成画面を開きます
                 </div>
               </div>
               <div style={{ fontSize: "0.8rem", opacity: 0.4 }}>&#x203A;</div>
-            </a>
+            </div>
 
             <a
               href="https://www.msf.or.jp/donate/"
@@ -426,12 +433,12 @@ export default function Dashboard() {
   );
 }
 
-function buildNoteUrl(news: { title: string; link: string }[]) {
+function buildNoteTemplate(news: { title: string; link: string }[]) {
   const newsSection = news.length > 0
     ? news.slice(0, 5).map((n) => `- ${n.title}\n  ${n.link}`).join("\n")
     : "- https://www.msf.or.jp/news/\n- https://www3.nhk.or.jp/news/cat6.html";
 
-  const body = `【禁煙の贖罪記事】
+  return `【禁煙の贖罪記事】
 
 私はまたタバコを買ってしまった。
 2026年4月から、IQOS1箱あたり40円のたばこ税増税分が防衛費に転用されている。
@@ -447,10 +454,8 @@ ${newsSection}
 
 ---
 
-（ここに、上記ニュースを引用しながら1000字以上の政治的批判を書いてください）
-
+（ここに、上記ニュースを引用しながら1000字以上の自己批判を書いてください）
 `;
-  return `https://note.com/intent/post?body=${encodeURIComponent(body)}`;
 }
 
 function Countdown({ expiresAt }: { expiresAt: string }) {
