@@ -29,6 +29,7 @@ on:
       - buy_2              # 2箱購入 (80円)
       - buy_3              # 3箱購入 (120円)
       - buy_carton         # カートン購入 (400円)
+      - unlock_request     # 贖罪URL提出による解除申請
 
   # 毎日朝8時(JST)に日次チェック
   schedule:
@@ -576,3 +577,137 @@ jobs:
           git add $STATUS_FILE
           git commit -m "🔒 LOCKED (iPhone): ${QUANTITY}箱購入 — ${COST}円が軍事費に加担"
           git push
+
+  # ─────────────────────────────────────────────
+  # Job 7: ダッシュボード/iPhone経由の解除申請
+  # ─────────────────────────────────────────────
+  dashboard-unlock:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'unlock_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "🔍 ロック状態確認"
+        id: check_lock
+        run: |
+          IS_LOCKED=$(jq -r '.isLocked' $STATUS_FILE)
+          if [ "$IS_LOCKED" != "true" ]; then
+            echo "現在ロックされていません。"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "🤖 Claude による贖罪検証"
+        if: steps.check_lock.outputs.skip != 'true'
+        id: verify
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_SYSTEM_KEY }}
+        run: |
+          REDEMPTION_URL="${{ github.event.client_payload.url }}"
+          if [ -z "$REDEMPTION_URL" ]; then
+            echo "VERDICT=rejected" >> $GITHUB_OUTPUT
+            echo "REASON=贖罪URLが提供されていません。" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CONTENT=$(curl -sL "$REDEMPTION_URL" | head -c 20000 || echo "取得失敗")
+
+          PROMPT=$(cat <<PROMPT_EOF
+          あなたは「The Watcher」の検証モジュール。厳格に判定せよ。
+
+          ユーザーがタバコ購入による軍事費加担の「贖罪」として以下のURLを提出した:
+          URL: ${REDEMPTION_URL}
+
+          【取得したコンテンツ（冒頭20000字）】
+          ${CONTENT}
+
+          以下の要件を**すべて**満たしているか判定せよ:
+          1. 1000字以上の文章であること
+          2. 日本の防衛費増額・タバコ税の軍事転用に対する政治的批判が含まれていること
+          3. 具体的なニュースや事実への言及があること
+          4. 単なるコピペや生成AIの丸投げではなく、個人の意見・主張が含まれていること
+
+          OR（代替条件）:
+          - 反戦・平和団体への寄付証明であること
+
+          回答は以下のJSON形式のみで返せ:
+          {"verdict": "approved" or "rejected", "reason": "判定理由(100字以内)"}
+          PROMPT_EOF
+          )
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                model: "claude-sonnet-4-6-20250514",
+                max_tokens: 512,
+                messages: [{ role: "user", content: $prompt }]
+              }')" \
+            | jq -r '.content[0].text // "{\"verdict\":\"rejected\",\"reason\":\"API応答エラー\"}"')
+
+          VERDICT=$(echo "$RESPONSE" | jq -r '.verdict // "rejected"')
+          REASON=$(echo "$RESPONSE" | jq -r '.reason // "判定不能"')
+
+          echo "VERDICT=$VERDICT" >> $GITHUB_OUTPUT
+          echo "REASON=$REASON" >> $GITHUB_OUTPUT
+
+      - name: "🔓 解除実行"
+        if: steps.check_lock.outputs.skip != 'true' && steps.verify.outputs.VERDICT == 'approved'
+        run: |
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          REASON="${{ steps.verify.outputs.REASON }}"
+          URL="${{ github.event.client_payload.url }}"
+
+          jq --arg now "$NOW" \
+             --arg reason "$REASON" \
+             --arg url "$URL" \
+             '
+             .isLocked = false |
+             .lockExpiresAt = null |
+             .streak.startDate = ($now | split("T")[0]) |
+             .redemptions += [{
+               "date": $now,
+               "url": $url,
+               "reason": $reason
+             }]
+             ' $STATUS_FILE > tmp.json && mv tmp.json $STATUS_FILE
+
+          git config user.name "The Watcher"
+          git config user.email "watcher@system.local"
+          git add $STATUS_FILE
+          git stash
+          git pull --rebase origin main
+          git stash pop
+          git add $STATUS_FILE
+          git commit -m "🔓 UNLOCKED: 贖罪が承認されました"
+          git push
+
+      - name: "📱 結果通知"
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          VERDICT="${{ steps.verify.outputs.VERDICT }}"
+          REASON="${{ steps.verify.outputs.REASON }}"
+          if [ "$VERDICT" = "approved" ]; then
+            TITLE="✅ The Watcher: 解除承認"
+            MSG="贖罪が認められました。CLIロックを解除します。平和への貢献に感謝します。"
+            SOUND="magic"
+          else
+            TITLE="❌ The Watcher: 贖罪不十分"
+            MSG="解除は拒否されました。理由: $REASON"
+            SOUND="falling"
+          fi
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=$TITLE" \
+               --form-string "message=$MSG" \
+               --form-string "priority=0" \
+               --form-string "sound=$SOUND" \
+               https://api.pushover.net/1/messages.json
