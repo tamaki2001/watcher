@@ -21,7 +21,8 @@
       "Bash(curl -sf \"https://raw.githubusercontent.com/tamaki2001/watcher/main/data/status.json\")",
       "Bash(curl:*)",
       "Bash(printf '{\"event_type\":\"proximity_alert\",\"client_payload\":{\"source\":\"test\"}}')",
-      "Bash(printf '{\"event_type\":\"report_purchase\",\"client_payload\":{\"quantity\":\"1\"}}')"
+      "Bash(printf '{\"event_type\":\"report_purchase\",\"client_payload\":{\"quantity\":\"1\"}}')",
+      "Bash(npm start:*)"
     ]
   }
 }

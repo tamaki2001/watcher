@@ -183,7 +183,7 @@ export default function Dashboard() {
       <section style={s.section}>
         <h2 style={s.sectionTitle}>購入報告</h2>
         <p style={{ fontSize: "0.8rem", opacity: 0.5, margin: "0 0 0.8rem" }}>
-          買ってしまった場合はここから報告。24時間CLIがロックされます。
+          買ってしまった場合はここから報告。24時間Gemini/Claudeがロックされます。
         </p>
         <div style={s.buttonRow}>
           {[
