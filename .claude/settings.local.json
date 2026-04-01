@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(mkdir -p data scripts .github/workflows app/dashboard)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}

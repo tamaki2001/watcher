@@ -1,0 +1,417 @@
+name: "The Watcher — 禁煙監視システム"
+
+on:
+  # 手動トリガー（テスト・運用両方）
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "実行するアクション"
+        required: true
+        type: choice
+        options:
+          - report_purchase     # 購入を報告（加担）
+          - request_unlock      # 解除を申請
+          - check_status        # 状態確認
+          - daily_encouragement # 日次励まし
+      quantity:
+        description: "購入数量 (1=1箱40円, 10=カートン400円)"
+        required: false
+        default: "1"
+      redemption_url:
+        description: "贖罪URL (noteの記事 or 寄付スクリーンショットURL)"
+        required: false
+
+  # 毎日朝8時(JST)に日次チェック
+  schedule:
+    - cron: "0 23 * * *"  # UTC 23:00 = JST 08:00
+
+env:
+  STATUS_FILE: data/status.json
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: 購入報告 → ロック発動
+  # ─────────────────────────────────────────────
+  report-purchase:
+    if: github.event.inputs.action == 'report_purchase'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "🔒 ロック発動 & 状態更新"
+        run: |
+          QUANTITY="${{ github.event.inputs.quantity }}"
+          COST=$((QUANTITY * 40))
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          LOCK_UNTIL=$(date -u -d "+24 hours" +"%Y-%m-%dT%H:%M:%SZ")
+
+          # status.json を更新
+          jq --arg now "$NOW" \
+             --arg lock_until "$LOCK_UNTIL" \
+             --argjson cost "$COST" \
+             --argjson qty "$QUANTITY" \
+             '
+             .isLocked = true |
+             .lockExpiresAt = $lock_until |
+             .streak.days = 0 |
+             .streak.startDate = ($now | split("T")[0]) |
+             .stats.complicityCount += 1 |
+             .stats.complicityBudget += $cost |
+             .history += [{
+               "type": "purchase",
+               "date": $now,
+               "quantity": $qty,
+               "cost": $cost,
+               "lockUntil": $lock_until
+             }]
+             ' $STATUS_FILE > tmp.json && mv tmp.json $STATUS_FILE
+
+          echo "COST=$COST" >> $GITHUB_ENV
+          echo "LOCK_UNTIL=$LOCK_UNTIL" >> $GITHUB_ENV
+          echo "QUANTITY=$QUANTITY" >> $GITHUB_ENV
+
+      - name: "📰 軍事ニュース取得"
+        id: news
+        run: |
+          # Google News RSSから軍事関連ニュースを取得
+          NEWS=$(curl -s "https://news.google.com/rss/search?q=日本+防衛費+軍事&hl=ja&gl=JP&ceid=JP:ja" \
+            | grep -oP '<title><!\[CDATA\[\K[^]]+' \
+            | head -5 \
+            | tr '\n' '|' || echo "ニュース取得失敗")
+
+          # 紛争ニュースも取得
+          CONFLICT=$(curl -s "https://news.google.com/rss/search?q=戦争+紛争+武力衝突&hl=ja&gl=JP&ceid=JP:ja" \
+            | grep -oP '<title><!\[CDATA\[\K[^]]+' \
+            | head -3 \
+            | tr '\n' '|' || echo "紛争ニュース取得失敗")
+
+          # 出力をファイル経由で渡す（改行・特殊文字安全）
+          echo "$NEWS" > /tmp/news.txt
+          echo "$CONFLICT" > /tmp/conflict.txt
+
+      - name: "🤖 Claudeによる責めメッセージ生成"
+        id: claude_message
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_SYSTEM_KEY }}
+        run: |
+          NEWS=$(cat /tmp/news.txt)
+          CONFLICT=$(cat /tmp/conflict.txt)
+
+          PROMPT=$(cat <<PROMPT_EOF
+          あなたは「The Watcher」——冷徹で知的な禁煙監視AI。
+          ユーザーはタバコ税の防衛費転用に抗議して禁煙を誓ったが、今IQOSを${QUANTITY}箱購入してしまった。
+          これにより${COST}円が軍事費に加担した。
+
+          以下の最新ニュースを踏まえて、ユーザーの「加担」がいかに現実の軍事化に繋がるかを
+          冷徹かつ知的に、しかし人格攻撃はせず、事実と論理で突きつけるメッセージを生成せよ。
+          300字以内。最後に「解除条件: 1000字以上の政治批判記事をnoteに投稿、または反戦団体への寄付証明」と明記。
+
+          【防衛関連ニュース】
+          ${NEWS}
+
+          【紛争ニュース】
+          ${CONFLICT}
+          PROMPT_EOF
+          )
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                model: "claude-sonnet-4-6-20250514",
+                max_tokens: 1024,
+                messages: [{ role: "user", content: $prompt }]
+              }')" \
+            | jq -r '.content[0].text // "メッセージ生成に失敗しました"')
+
+          echo "$RESPONSE" > /tmp/claude_message.txt
+
+      - name: "📱 Pushover通知送信"
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          MESSAGE=$(cat /tmp/claude_message.txt)
+
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=⚠️ The Watcher: 加担検出" \
+               --form-string "message=$MESSAGE" \
+               --form-string "priority=1" \
+               --form-string "sound=siren" \
+               --form-string "url=https://github.com/${{ github.repository }}/actions/workflows/watcher.yml" \
+               --form-string "url_title=贖罪して解除を申請する" \
+               https://api.pushover.net/1/messages.json
+
+      - name: "📝 変更をコミット"
+        run: |
+          git config user.name "The Watcher"
+          git config user.email "watcher@system.local"
+          git add $STATUS_FILE
+          git commit -m "🔒 LOCKED: ${QUANTITY}箱購入 — ${COST}円が軍事費に加担"
+          git push
+
+  # ─────────────────────────────────────────────
+  # Job 2: 解除申請 → Claude検証
+  # ─────────────────────────────────────────────
+  request-unlock:
+    if: github.event.inputs.action == 'request_unlock'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "🔍 ロック状態確認"
+        id: check_lock
+        run: |
+          IS_LOCKED=$(jq -r '.isLocked' $STATUS_FILE)
+          if [ "$IS_LOCKED" != "true" ]; then
+            echo "現在ロックされていません。"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "🤖 Claude による贖罪検証"
+        if: steps.check_lock.outputs.skip != 'true'
+        id: verify
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_SYSTEM_KEY }}
+          REDEMPTION_URL: ${{ github.event.inputs.redemption_url }}
+        run: |
+          if [ -z "$REDEMPTION_URL" ]; then
+            echo "VERDICT=rejected" >> $GITHUB_OUTPUT
+            echo "REASON=贖罪URLが提供されていません。" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # URLの内容を取得
+          CONTENT=$(curl -sL "$REDEMPTION_URL" | head -c 20000 || echo "取得失敗")
+
+          PROMPT=$(cat <<PROMPT_EOF
+          あなたは「The Watcher」の検証モジュール。厳格に判定せよ。
+
+          ユーザーがタバコ購入による軍事費加担の「贖罪」として以下のURLを提出した:
+          URL: ${REDEMPTION_URL}
+
+          【取得したコンテンツ（冒頭20000字）】
+          ${CONTENT}
+
+          以下の要件を**すべて**満たしているか判定せよ:
+          1. 1000字以上の文章であること
+          2. 日本の防衛費増額・タバコ税の軍事転用に対する政治的批判が含まれていること
+          3. 具体的なニュースや事実への言及があること
+          4. 単なるコピペや生成AIの丸投げではなく、個人の意見・主張が含まれていること
+
+          OR（代替条件）:
+          - 反戦・平和団体への寄付証明であること
+
+          回答は以下のJSON形式のみで返せ:
+          {"verdict": "approved" or "rejected", "reason": "判定理由(100字以内)"}
+          PROMPT_EOF
+          )
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                model: "claude-sonnet-4-6-20250514",
+                max_tokens: 512,
+                messages: [{ role: "user", content: $prompt }]
+              }')" \
+            | jq -r '.content[0].text // "{\"verdict\":\"rejected\",\"reason\":\"API応答エラー\"}"')
+
+          echo "$RESPONSE" > /tmp/verdict.json
+          VERDICT=$(echo "$RESPONSE" | jq -r '.verdict // "rejected"')
+          REASON=$(echo "$RESPONSE" | jq -r '.reason // "判定不能"')
+
+          echo "VERDICT=$VERDICT" >> $GITHUB_OUTPUT
+          echo "REASON=$REASON" >> $GITHUB_OUTPUT
+
+      - name: "🔓 解除実行"
+        if: steps.check_lock.outputs.skip != 'true' && steps.verify.outputs.VERDICT == 'approved'
+        run: |
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          REASON="${{ steps.verify.outputs.REASON }}"
+          URL="${{ github.event.inputs.redemption_url }}"
+
+          jq --arg now "$NOW" \
+             --arg reason "$REASON" \
+             --arg url "$URL" \
+             '
+             .isLocked = false |
+             .lockExpiresAt = null |
+             .streak.startDate = ($now | split("T")[0]) |
+             .redemptions += [{
+               "date": $now,
+               "url": $url,
+               "reason": $reason
+             }]
+             ' $STATUS_FILE > tmp.json && mv tmp.json $STATUS_FILE
+
+          git config user.name "The Watcher"
+          git config user.email "watcher@system.local"
+          git add $STATUS_FILE
+          git commit -m "🔓 UNLOCKED: 贖罪が承認されました"
+          git push
+
+      - name: "❌ 解除拒否通知"
+        if: steps.check_lock.outputs.skip != 'true' && steps.verify.outputs.VERDICT != 'approved'
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          REASON="${{ steps.verify.outputs.REASON }}"
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=❌ The Watcher: 贖罪不十分" \
+               --form-string "message=解除は拒否されました。理由: $REASON" \
+               --form-string "priority=0" \
+               https://api.pushover.net/1/messages.json
+
+      - name: "✅ 解除完了通知"
+        if: steps.check_lock.outputs.skip != 'true' && steps.verify.outputs.VERDICT == 'approved'
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=✅ The Watcher: 解除承認" \
+               --form-string "message=贖罪が認められました。CLIロックを解除します。平和への貢献に感謝します。" \
+               --form-string "priority=0" \
+               --form-string "sound=magic" \
+               https://api.pushover.net/1/messages.json
+
+  # ─────────────────────────────────────────────
+  # Job 3: 日次チェック（スケジュール実行 & 手動）
+  # ─────────────────────────────────────────────
+  daily-check:
+    if: github.event_name == 'schedule' || github.event.inputs.action == 'daily_encouragement'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "📊 ストリーク更新 & 自動解除チェック"
+        id: daily
+        run: |
+          IS_LOCKED=$(jq -r '.isLocked' $STATUS_FILE)
+          LOCK_EXPIRES=$(jq -r '.lockExpiresAt // empty' $STATUS_FILE)
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # 期限切れなら自動解除（ただし贖罪なし＝ペナルティ残留）
+          if [ "$IS_LOCKED" = "true" ] && [ -n "$LOCK_EXPIRES" ]; then
+            if [[ "$NOW" > "$LOCK_EXPIRES" ]]; then
+              jq '.isLocked = false | .lockExpiresAt = null' $STATUS_FILE > tmp.json && mv tmp.json $STATUS_FILE
+              echo "auto_unlocked=true" >> $GITHUB_OUTPUT
+              IS_LOCKED="false"
+            fi
+          fi
+
+          # ストリーク日数を計算
+          if [ "$IS_LOCKED" = "false" ]; then
+            START_DATE=$(jq -r '.streak.startDate' $STATUS_FILE)
+            DAYS=$(( ( $(date -u +%s) - $(date -u -d "$START_DATE" +%s) ) / 86400 ))
+            jq --argjson days "$DAYS" '.streak.days = $days' $STATUS_FILE > tmp.json && mv tmp.json $STATUS_FILE
+            echo "STREAK_DAYS=$DAYS" >> $GITHUB_ENV
+          else
+            echo "STREAK_DAYS=0" >> $GITHUB_ENV
+          fi
+
+          BLOCKED=$(jq '.stats.blockedCount' $STATUS_FILE)
+          BUDGET=$(jq '.stats.blockedBudget' $STATUS_FILE)
+          echo "BLOCKED=$BLOCKED" >> $GITHUB_ENV
+          echo "BUDGET=$BUDGET" >> $GITHUB_ENV
+
+      - name: "🤖 日次メッセージ生成"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_SYSTEM_KEY }}
+        run: |
+          # 軍事ニュース取得
+          NEWS=$(curl -s "https://news.google.com/rss/search?q=日本+防衛費+軍事&hl=ja&gl=JP&ceid=JP:ja" \
+            | grep -oP '<title><!\[CDATA\[\K[^]]+' \
+            | head -3 \
+            | tr '\n' '|' || echo "取得失敗")
+
+          PROMPT=$(cat <<PROMPT_EOF
+          あなたは「The Watcher」——知的で冷徹な禁煙監視AI。
+          ユーザーの現在の状況:
+          - 禁煙継続: ${STREAK_DAYS}日目
+          - これまで阻止した軍事費: ${BUDGET}円 (${BLOCKED}回の誘惑を阻止)
+
+          最新の防衛関連ニュース: ${NEWS}
+
+          ユーザーを励ましつつ、禁煙を続ける意義（軍事費への不加担）を知的に伝えるメッセージを200字以内で生成せよ。
+          冷徹だが敬意を持ったトーンで。数値を具体的に引用すること。
+          PROMPT_EOF
+          )
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg prompt "$PROMPT" \
+              '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 512,
+                messages: [{ role: "user", content: $prompt }]
+              }')" \
+            | jq -r '.content[0].text // "本日の監視報告生成に失敗"')
+
+          echo "$RESPONSE" > /tmp/daily_message.txt
+
+      - name: "📱 日次通知"
+        env:
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+        run: |
+          MESSAGE=$(cat /tmp/daily_message.txt)
+          curl -s --form-string "token=$PUSHOVER_TOKEN" \
+               --form-string "user=$PUSHOVER_USER" \
+               --form-string "title=📊 The Watcher: 日次報告 (${STREAK_DAYS}日目)" \
+               --form-string "message=$MESSAGE" \
+               --form-string "priority=0" \
+               https://api.pushover.net/1/messages.json
+
+      - name: "📝 変更をコミット"
+        run: |
+          git config user.name "The Watcher"
+          git config user.email "watcher@system.local"
+          git add $STATUS_FILE
+          git diff --staged --quiet || (git commit -m "📊 Daily check: ${STREAK_DAYS}日目" && git push)
+
+  # ─────────────────────────────────────────────
+  # Job 4: ステータス確認（手動のみ）
+  # ─────────────────────────────────────────────
+  check-status:
+    if: github.event.inputs.action == 'check_status'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "📋 現在の状態を出力"
+        run: |
+          echo "=== The Watcher Status ==="
+          cat $STATUS_FILE | jq .
+          echo ""
+          IS_LOCKED=$(jq -r '.isLocked' $STATUS_FILE)
+          if [ "$IS_LOCKED" = "true" ]; then
+            EXPIRES=$(jq -r '.lockExpiresAt' $STATUS_FILE)
+            echo "⚠️ LOCKED — 解除期限: $EXPIRES"
+            echo "解除するには workflow_dispatch で request_unlock を実行し、贖罪URLを提出してください。"
+          else
+            DAYS=$(jq '.streak.days' $STATUS_FILE)
+            echo "✅ UNLOCKED — 禁煙${DAYS}日目継続中"
+          fi

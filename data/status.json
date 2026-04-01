@@ -1,0 +1,16 @@
+{
+  "isLocked": false,
+  "lockExpiresAt": null,
+  "streak": {
+    "days": 1,
+    "startDate": "2026-04-01"
+  },
+  "stats": {
+    "blockedCount": 0,
+    "blockedBudget": 0,
+    "complicityCount": 0,
+    "complicityBudget": 0
+  },
+  "history": [],
+  "redemptions": []
+}
