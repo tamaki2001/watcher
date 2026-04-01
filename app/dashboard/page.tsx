@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [message, setMessage] = useState<string | null>(null);
   const [unlockUrl, setUnlockUrl] = useState("");
   const [news, setNews] = useState<{ title: string; link: string }[]>([]);
+  const [selectedNews, setSelectedNews] = useState<Set<number>>(new Set());
 
   const fetchStatus = useCallback(() => {
     fetch(STATUS_URL, { cache: "no-store" })
@@ -162,18 +163,34 @@ export default function Dashboard() {
       {status.isLocked && news.length > 0 && (
         <section style={s.section}>
           <h2 style={s.sectionTitle}>あなたの加担が支える現実</h2>
+          <p style={{ fontSize: "0.75rem", opacity: 0.4, margin: "0 0 0.4rem" }}>
+            noteに引用するニュースをチェックしてください
+          </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
             {news.map((n, i) => (
-              <a
-                key={i}
-                href={n.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={s.newsItem}
-              >
-                <span style={{ color: "#ff6666", flexShrink: 0 }}>{"\u25CF"}</span>
-                <span>{n.title}</span>
-              </a>
+              <div key={i} style={{ ...s.newsItem, cursor: "pointer" }} onClick={() => {
+                setSelectedNews((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(i)) next.delete(i); else next.add(i);
+                  return next;
+                });
+              }}>
+                <input
+                  type="checkbox"
+                  checked={selectedNews.has(i)}
+                  onChange={() => {}}
+                  style={{ accentColor: "#ff6666", flexShrink: 0, width: 16, height: 16, cursor: "pointer" }}
+                />
+                <a
+                  href={n.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: selectedNews.has(i) ? "#ffaaaa" : "#ccaaaa", textDecoration: "none", flex: 1 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {n.title}
+                </a>
+              </div>
             ))}
           </div>
         </section>
@@ -222,7 +239,11 @@ export default function Dashboard() {
           {/* 贖罪方法カード */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
             <a
-              href={buildNoteUrl(news)}
+              href={buildNoteUrl(
+                selectedNews.size > 0
+                  ? news.filter((_, i) => selectedNews.has(i))
+                  : news
+              )}
               target="_blank"
               rel="noopener noreferrer"
               style={s.redemptionCard}
