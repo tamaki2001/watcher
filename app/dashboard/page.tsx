@@ -435,26 +435,32 @@ export default function Dashboard() {
 
 function buildNoteTemplate(news: { title: string; link: string }[]) {
   const newsSection = news.length > 0
-    ? news.slice(0, 5).map((n) => `- ${n.title}\n  ${n.link}`).join("\n")
-    : "- https://www.msf.or.jp/news/\n- https://www3.nhk.or.jp/news/cat6.html";
+    ? news.slice(0, 5).map((n) => `- [${n.title}](${n.link})`).join("\n")
+    : "- [国境なき医師団 ニュース](https://www.msf.or.jp/news/)\n- [NHK 国際ニュース](https://www3.nhk.or.jp/news/cat6.html)";
 
-  return `【禁煙の贖罪記事】
+  return `# 禁煙の贖罪記事
 
 私はまたタバコを買ってしまった。
-2026年4月から、IQOS1箱あたり40円のたばこ税増税分が防衛費に転用されている。
-つまり私は、1箱買うたびに40円を軍事費に加担している。
+
+2026年4月から、IQOS1箱あたり**40円**のたばこ税増税分が防衛費に転用されている。つまり私は、1箱買うたびに40円を軍事費に加担している。
 
 この記事では、その「加担」が現実に何を意味するのかを直視する。
 
 ---
 
-【いま世界で起きていること】
+## いま世界で起きていること
 
 ${newsSection}
 
 ---
 
-（ここに、上記ニュースを引用しながら1000字以上の自己批判を書いてください）
+## 自己批判
+
+> ここに、上記ニュースを引用しながら**1000字以上の自己批判**を書いてください。
+>
+> - なぜ買ってしまったのか
+> - その税金がどこに使われるのか
+> - 戦禍の現実と自分の行動のつながり
 `;
 }
 
