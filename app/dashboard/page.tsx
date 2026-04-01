@@ -229,7 +229,7 @@ export default function Dashboard() {
             >
               <div style={{ fontSize: "1.2rem" }}>&#x270D;&#xFE0F;</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>noteに政治批判記事を書く</div>
+                <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>noteに自己批判記事を書く</div>
                 <div style={{ fontSize: "0.75rem", opacity: 0.5, marginTop: 2 }}>
                   1000字以上 / 防衛費・タバコ税への批判 / ニュース引用必須
                 </div>
