@@ -13,10 +13,10 @@ _watcher_check() {
   local cmd_name="$1"
   shift
 
-  # GitHubからstatus.jsonを取得（rawコンテンツ）
-  local status_url="https://raw.githubusercontent.com/${WATCHER_REPO}/main/data/status.json"
+  # GitHubからstatus.jsonを取得（GitHub API経由 — privateリポジトリ対応）
   local status
-  status=$(curl -sf --max-time 5 "$status_url" 2>/dev/null)
+  status=$(gh api "repos/${WATCHER_REPO}/contents/data/status.json" \
+    --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)
 
   if [ $? -ne 0 ]; then
     # ネットワークエラー時はフェイルオープン（通す）
@@ -77,9 +77,9 @@ gemini() { _watcher_check gemini "$@"; }
 git() {
   if [ "$1" = "commit" ] || [ "$1" = "push" ]; then
     # git commit/push もロック時はブロック
-    local status_url="https://raw.githubusercontent.com/${WATCHER_REPO}/main/data/status.json"
     local is_locked
-    is_locked=$(curl -sf --max-time 5 "$status_url" 2>/dev/null | jq -r '.isLocked' 2>/dev/null)
+    is_locked=$(gh api "repos/${WATCHER_REPO}/contents/data/status.json" \
+      --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | jq -r '.isLocked' 2>/dev/null)
 
     if [ "$is_locked" = "true" ]; then
       echo ""
