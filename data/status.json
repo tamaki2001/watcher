@@ -1,15 +1,15 @@
 {
-  "isLocked": true,
-  "lockExpiresAt": "2026-04-10T23:59:59Z",
+  "isLocked": false,
+  "lockExpiresAt": null,
   "streak": {
-    "days": 0,
+    "days": 1,
     "startDate": "2026-04-09"
   },
   "stats": {
     "blockedCount": 0,
     "blockedBudget": 0,
-    "complicityCount": 1,
-    "complicityBudget": 40
+    "complicityCount": 0,
+    "complicityBudget": 0
   },
   "history": [],
   "redemptions": []
