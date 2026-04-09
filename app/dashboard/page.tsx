@@ -78,7 +78,30 @@ export default function Dashboard() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        setTimeout(fetchStatus, 10000);
+        if (eventType.startsWith("buy_")) {
+          setStatus(prev => prev ? {
+            ...prev,
+            isLocked: true,
+            lockExpiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+            streak: { ...prev.streak, days: 0, startDate: new Date().toISOString().split("T")[0] },
+          } : null);
+          setMessage("ペナルティシステムが作動しました。実際の同期を待機中...");
+        } else if (eventType === "unlock_request") {
+          setMessage("解除申請を送信しました。Claudeの検証を待機中...");
+        } else {
+          setMessage("処理を受け付けました。");
+        }
+        
+        // Poll aggressively untill GitHub Actions finishes
+        let attempts = 0;
+        const pid = setInterval(() => {
+          fetchStatus();
+          attempts++;
+          if (attempts > 8) {
+            clearInterval(pid);
+            setMessage(null);
+          }
+        }, 5000);
       } else {
         const data = await res.json();
         setMessage(`エラー: ${data.error || "不明"}`);

@@ -7,7 +7,7 @@
 #    source /path/to/watcher_cli.sh
 # ═══════════════════════════════════════════════════════════
 
-WATCHER_REPO="tamaki2001/watcher"
+WATCHER_REPO="${WATCHER_REPO:-${GITHUB_REPO:-tamaki2001/watcher}}"
 
 _watcher_check() {
   local cmd_name="$1"
@@ -73,24 +73,5 @@ _watcher_check() {
 claude() { _watcher_check claude "$@"; }
 gemini() { _watcher_check gemini "$@"; }
 
-# git commit もブロック対象にする場合（オプション）
-git() {
-  if [ "$1" = "commit" ] || [ "$1" = "push" ]; then
-    # git commit/push もロック時はブロック
-    local is_locked
-    is_locked=$(gh api "repos/${WATCHER_REPO}/contents/data/status.json" \
-      --jq '.content' 2>/dev/null | base64 -d 2>/dev/null | jq -r '.isLocked' 2>/dev/null)
-
-    if [ "$is_locked" = "true" ]; then
-      echo ""
-      echo "  ⛔ THE WATCHER: git $1 はロック中は禁止されています。"
-      echo "  贖罪を完了してから開発を再開してください。"
-      echo ""
-      return 1
-    fi
-  fi
-  command git "$@"
-}
-
 echo "🔍 The Watcher CLI Guard: 有効化されました"
-echo "   監視対象: claude, gemini, git commit/push"
+echo "   監視対象: claude, gemini"

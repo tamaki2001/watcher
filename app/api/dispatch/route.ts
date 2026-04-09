@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const GITHUB_PAT = process.env.GITHUB_PAT!;
-const REPO = "tamaki2001/watcher";
+const REPO = process.env.GITHUB_REPO || process.env.NEXT_PUBLIC_GITHUB_REPO || "tamaki2001/watcher";
 const DISPATCH_URL = `https://api.github.com/repos/${REPO}/dispatches`;
 
 const VALID_EVENTS = [
