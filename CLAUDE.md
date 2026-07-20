@@ -11,13 +11,13 @@
 ## アーキテクチャ
 
 ```
-[Dashboard (Vercel)]  ←→  [API Routes]  →  [GitHub Actions]
-       ↓                                         ↓
-[iPhone Shortcuts]  →  [repository_dispatch]  →  [Claude API]
-                                                     ↓
-                                              [Pushover通知]
-                                                     ↓
-                                              [data/status.json (Git)]
+[Dashboard (Vercel)]  ←→  [API Routes]  →  [workflow_dispatch]  →  [GitHub Actions]
+                                                                           ↓
+                                                                     [Claude API]
+                                                                           ↓
+                                                                    [Pushover通知]
+                                                                           ↓
+                                                                 [data/status.json (Git)]
 ```
 
 ## スタック
@@ -50,17 +50,14 @@ scripts/
   watcher.yml             # 7ジョブの中核ワークフロー
 ```
 
-## GitHub Actions ワークフロー (7ジョブ)
+## GitHub Actions ワークフロー (4ジョブ)
 
 | ジョブ | トリガー | 動作 |
 |-------|---------|------|
-| report-purchase | 手動 (dashboard) | ロック発動、罪悪感メッセージ送信 |
-| iphone-purchase | repository_dispatch | iPhone Shortcuts経由の購入報告 |
-| request-unlock | 手動 (dashboard) | Claude APIで提出URLを検証、承認/拒否 |
-| dashboard-unlock | repository_dispatch | iPhone Shortcuts経由の解除申請 |
+| report-purchase | workflow_dispatch (dashboard) | ロック発動、罪悪感メッセージ送信 |
+| request-unlock | workflow_dispatch (dashboard) | Claude APIで提出URLを検証、承認/拒否 |
 | daily-check | schedule (毎日08:00 JST) | 自動解除、ストリーク更新、激励メッセージ |
-| check-status | 手動 | 状態確認のみ（変更なし） |
-| proximity-alert | repository_dispatch | コンビニ接近時の警告通知 |
+| check-status | workflow_dispatch | 状態確認のみ（変更なし） |
 
 ## コマンド
 
@@ -72,9 +69,15 @@ npm run start    # 本番サーバー
 
 ## Secrets (GitHub Repository Secrets)
 
-- `CLAUDE_SYSTEM_KEY` — Anthropic API Key (claude-sonnet-4-6/haiku-4-5)
-- `PUSHOVER_TOKEN` / `PUSHOVER_USER` — 通知送信
-- GitHub PAT — workflow dispatch用 (gh CLIで認証済み)
+| シークレット | 保管先 | 有効期限 | 再発行URL |
+|------------|-------|---------|----------|
+| `CLAUDE_SYSTEM_KEY` (`sk-ant-api03-*`) | GitHub Secrets + Vercel | 無期限 | console.anthropic.com > API Keys |
+| `PUSHOVER_TOKEN` / `PUSHOVER_USER` | GitHub Secrets + Vercel | 無期限 | pushover.net > Your Applications |
+| GitHub PAT (workflow dispatch) | Vercel env `GITHUB_PAT` | 1年 | github.com > Settings > Developer settings > PAT |
+
+### ローテ手順
+
+1. 再発行 → 2. Vercel: `printf '%s' "$KEY" \| vercel env add KEY production`（echo禁止） → 3. `gh secret set KEY -b"$KEY"` → 4. `vercel --prod`
 
 ## 状態ファイル (data/status.json)
 
