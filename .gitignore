@@ -8,3 +8,6 @@ node_modules/
 
 # Claude Code ローカル設定（シークレット含む可能性）
 .claude/settings.local.json
+
+# macOS
+.DS_Store

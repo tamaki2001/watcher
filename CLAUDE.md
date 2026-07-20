@@ -1,5 +1,7 @@
 # The Watcher
 
+> **このプロジェクトは休眠中** — 今後の機能開発予定はなく、部品取り・名称整合性確保のために保持。バグ修正対応は通常通り。詳細はメモリ `project_dormant_projects` 参照。
+
 禁煙アカウンタビリティシステム。たばこ購入時にAIツールをロックし、政治的行動（記事執筆 or 寄付）で解除する。
 
 ## コンセプト
@@ -20,14 +22,15 @@
 
 ## スタック
 
-- **フロントエンド**: Next.js 15 + React 19、インラインCSS
-- **バックエンド**: Vercel Functions (API Routes) + GitHub Actions (オーケストレーション)
-- **AI**: Anthropic Claude API (claude-sonnet-4-6, claude-haiku-4-5)
+（標準スタック。詳細は `~/.claude/stack-catalog.md`）
+- フロントエンド: インラインCSS（Tailwind未使用）
+- バックエンド: Vercel Functions (API Routes) + GitHub Actions (オーケストレーション)
+- AI: Anthropic Claude API (`claude-sonnet-4-6`, `claude-haiku-4-5`)
   - 購入報告時: 防衛費×紛争ニュースを絡めた罪悪感メッセージ生成
   - 解除申請時: 提出URLの内容検証（1000文字以上の政治的批評か、寄付証明か）
-- **通知**: Pushover
-- **ニュース**: Google News RSS（防衛費、戦争、紛争関連）
-- **状態管理**: `data/status.json`（Gitコミットで永続化）
+- 通知: Pushover
+- ニュース: Google News RSS（防衛費、戦争、紛争関連）
+- 状態管理: `data/status.json`（Gitコミットで永続化）
 
 ## ディレクトリ構成
 
@@ -98,14 +101,4 @@ npm run start    # 本番サーバー
 - ダッシュボードは30秒間隔で状態をポーリング
 - ニュースAPIは1時間キャッシュ
 
-<!-- COSTVIEWER:START -->
-## コスト管理
-
-新しい有料サービスやレート制限のあるAPIを導入する際は、
-以下の情報をCost Viewerダッシュボードに登録してください:
-- サービス名、種別(従量課金/固定費/レート制限)
-- 課金通貨と料金体系
-- 使用するAPIキーの環境変数名
-
-現在追跡中のサービス: Claude (claude.ai + CLI), Anthropic Claude API, Google AI (Gemini API), Gemini (Web版), Oura Ring, Vercel, Cloudflare Workers/Pages, GitHub Actions, Supabase, Google Calendar API, GitHub API, Google Drive API, Gmail SMTP, Pushover, Anthropic Claude API (myportfolio)
-<!-- COSTVIEWER:END -->
+<!-- コスト追跡対象は `~/.claude/stack-catalog.md` および costviewer/CLAUDE.md 参照 -->
