@@ -1,29 +1,13 @@
 name: "The Watcher — 禁煙監視システム"
 
 on:
-  # 手動トリガー（テスト・運用両方）
+  # サービス停止済み（2026-07-30）— 禁煙プロジェクト終了のため全トリガーを無効化
+  # workflow_dispatch および schedule は意図的に削除
   workflow_dispatch:
     inputs:
-      action:
-        description: "実行するアクション"
-        required: true
-        type: choice
-        options:
-          - report_purchase     # 購入を報告（加担）
-          - request_unlock      # 解除を申請
-          - check_status        # 状態確認
-          - daily_encouragement # 日次励まし
-      quantity:
-        description: "購入数量 (1=1箱40円, 10=カートン400円)"
+      _disabled:
+        description: "このワークフローは停止されています"
         required: false
-        default: "1"
-      redemption_url:
-        description: "贖罪URL (noteの記事 or 寄付スクリーンショットURL)"
-        required: false
-
-  # 毎日朝8時(JST)に日次チェック
-  schedule:
-    - cron: "0 23 * * *"  # UTC 23:00 = JST 08:00
 
 env:
   STATUS_FILE: data/status.json
@@ -33,7 +17,7 @@ jobs:
   # Job 1: 購入報告 → ロック発動
   # ─────────────────────────────────────────────
   report-purchase:
-    if: github.event.inputs.action == 'report_purchase'
+    if: false  # サービス停止済み
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -164,7 +148,7 @@ jobs:
   # Job 2: 解除申請 → Claude検証
   # ─────────────────────────────────────────────
   request-unlock:
-    if: github.event.inputs.action == 'request_unlock'
+    if: false  # サービス停止済み
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -304,7 +288,7 @@ jobs:
   # Job 3: 日次チェック（スケジュール実行 & 手動）
   # ─────────────────────────────────────────────
   daily-check:
-    if: github.event_name == 'schedule' || github.event.inputs.action == 'daily_encouragement'
+    if: false  # サービス停止済み
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -408,7 +392,7 @@ jobs:
   # Job 4: ステータス確認（手動のみ）
   # ─────────────────────────────────────────────
   check-status:
-    if: github.event.inputs.action == 'check_status'
+    if: false  # サービス停止済み
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
